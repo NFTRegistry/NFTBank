@@ -12,60 +12,138 @@ contract NFTBank is ReentrancyGuard {
 
     IPunks public immutable punksAddress;
 
-    // Token (zero for ETH) address => ERC721 NFT Contract Address => NFT Token Id => balance
+    // Token address (zero for ETH) => ERC721 NFT Contract Address => NFT Token Id => balance
     mapping(address => mapping(address => mapping(uint256 => uint256))) public balances;
 
+    // Events
+    event EtherDeposited(address indexed user, address nftContractAddress, uint256 tokenId, uint256 value);
+    event EtherWithdrawn(address indexed user, address nftContractAddress, uint256 tokenId, uint256 value);
+    event ERC20Deposited(address indexed user, address nftContractAddress, uint256 tokenId, address tokenAddress, uint256 value);
+    event ERC20Withdrawn(address indexed user, address nftContractAddress, uint256 tokenId, address tokenAddress, uint256 value);
+    event EtherSent(address indexed user, address fromNFTContractAddress, uint256 fromTokenId, address toNFTContractAddress, uint256 toTokenId, uint256 value);
+    event ERC20Sent(address indexed user, address fromNFTContractAddress, uint256 fromTokenId, address toNFTContractAddress, uint256 toTokenId, address tokenAddress, uint256 value);    
+
+    /**
+     * @notice Constructor
+     * @param _punksAddress address of the CryptoPunks contract
+     */
     constructor (address _punksAddress) {
         punksAddress = IPunks(_punksAddress);
     }
 
-    function sendEther(address nftContractAddress, uint256 tokenId) public payable nonReentrant {
+    /**
+     * @notice Deposit Ether into an NFT
+     * @param nftContractAddress contract address of the NFT
+     * @param tokenId id of the NFT
+     */
+    function depositEther(address nftContractAddress, uint256 tokenId) public payable nonReentrant {
         uint256 valueReceived = msg.value;
-        balances[address(0)][nftContractAddress][tokenId] = valueReceived;
+        balances[address(0)][nftContractAddress][tokenId] += valueReceived;
+
+        emit EtherDeposited(msg.sender, nftContractAddress, tokenId, valueReceived);
     }
 
-    function sendERC20(address tokenAddress, uint256 quantity, address nftContractAddress, uint256 tokenId) public nonReentrant {
+    /**
+     * @notice Deposit ERC20s into an NFT
+     * @param tokenAddress address of the ERC20
+     * @param quantity amount of ERC20 to deposit
+     * @param nftContractAddress contract address of the NFT
+     * @param tokenId id of the NFT
+     */
+    function depositERC20(address tokenAddress, uint256 quantity, address nftContractAddress, uint256 tokenId) public nonReentrant {
         IERC20(tokenAddress).safeTransferFrom(msg.sender, address(this), quantity);
-        balances[tokenAddress][nftContractAddress][tokenId] = quantity;
+        balances[tokenAddress][nftContractAddress][tokenId] += quantity;
+
+        emit ERC20Deposited(msg.sender, nftContractAddress, tokenId, tokenAddress, quantity);
     }
 
-    function sendEtherProtected(address nftContractAddress, uint256 tokenId) public payable nonReentrant {
+    /**
+     * @notice Deposit Ether into an NFT checking that the NFT is owned by the sender
+     * @param nftContractAddress contract address of the NFT
+     * @param tokenId id of the NFT
+     */
+    function depositEtherProtected(address nftContractAddress, uint256 tokenId) external payable nonReentrant {
         checkOwnership(nftContractAddress, tokenId);
-        sendEther(nftContractAddress, tokenId);
+        depositEther(nftContractAddress, tokenId);
     }
 
-    function sendERC20Protected(address tokenAddress, uint256 quantity, address nftContractAddress, uint256 tokenId) public nonReentrant {
+    /**
+     * @notice Deposit ERC20s into an NFT checking that the NFT is owned by the sender
+     * @param tokenAddress address of the ERC20
+     * @param quantity amount of ERC20 to deposit
+     * @param nftContractAddress contract address of the NFT
+     * @param tokenId id of the NFT
+     */
+    function depositERC20Protected(address tokenAddress, uint256 quantity, address nftContractAddress, uint256 tokenId) external nonReentrant {
         checkOwnership(nftContractAddress, tokenId);        
-        sendERC20(tokenAddress, quantity, nftContractAddress, tokenId);
+        depositERC20(tokenAddress, quantity, nftContractAddress, tokenId);
     }    
 
-    function nftSendEther(address fromNFTContractAddress, uint256 fromTokenId, uint256 quantity, address toNFTContractAddress, uint256 toTokenId) public nonReentrant {
+    /**
+     * @notice Send Ether from one NFT to another
+     * @param fromNFTContractAddress contract address of the NFT sending Ether
+     * @param fromTokenId token id of the NFT sending Ether
+     * @param quantity quantity of Ether to be sent
+     * @param toNFTContractAddress contract address of the NFT receiving Ether
+     * @param toTokenId token id of the NFT receiving Ether
+     */
+    function nftSendEther(address fromNFTContractAddress, uint256 fromTokenId, uint256 quantity, address toNFTContractAddress, uint256 toTokenId) external nonReentrant {
         checkOwnership(fromNFTContractAddress, fromTokenId);
         require(balances[address(0)][fromNFTContractAddress][fromTokenId] >= quantity, "NFTBank: NFT doesn't have sufficient balance for that transfer");
         balances[address(0)][fromNFTContractAddress][fromTokenId] -= quantity;
         balances[address(0)][toNFTContractAddress][toTokenId] += quantity;
+
+        emit EtherSent(msg.sender, fromNFTContractAddress, fromTokenId, toNFTContractAddress, toTokenId, quantity);
     }
 
-    function nftSendERC20(address fromNFTContractAddress, uint256 fromTokenId, address tokenAddress, uint256 quantity, address toNFTContractAddress, uint256 toTokenId) public nonReentrant {
+    /**
+     * @notice Send ERC20s from one NFT to another
+     * @param fromNFTContractAddress contract address of the NFT sending the ERC20
+     * @param fromTokenId token id of the NFT sending the ERC20
+     * @param tokenAddress address of the ERC20 being sent
+     * @param quantity quantity of ERC20 to be sent
+     * @param toNFTContractAddress contract address of the NFT receiving the ERC20
+     * @param toTokenId token id of the NFT receiving the ERC20
+     */
+    function nftSendERC20(address fromNFTContractAddress, uint256 fromTokenId, address tokenAddress, uint256 quantity, address toNFTContractAddress, uint256 toTokenId) external nonReentrant {
         checkOwnership(fromNFTContractAddress, fromTokenId);
         require(balances[tokenAddress][fromNFTContractAddress][fromTokenId] >= quantity, "NFTBank: NFT doesn't have sufficient balance for that transfer");
         balances[tokenAddress][fromNFTContractAddress][fromTokenId] -= quantity;
         balances[tokenAddress][toNFTContractAddress][toTokenId] += quantity;
+
+        emit ERC20Sent(msg.sender, fromNFTContractAddress, fromTokenId, toNFTContractAddress, toTokenId, tokenAddress, quantity);
     }
 
-    function pullEther(address nftContractAddress, uint256 tokenId, uint256 quantity) public nonReentrant {
+    /**
+     * @notice Pull Ether from an NFT to the owner's wallet
+     * @param nftContractAddress contract address of the NFT
+     * @param tokenId id of the NFT
+     * @param quantity amount of Ether to be pulled
+     */
+    function pullEther(address nftContractAddress, uint256 tokenId, uint256 quantity) external nonReentrant {
         checkOwnership(nftContractAddress, tokenId);
         require(balances[address(0)][nftContractAddress][tokenId] >= quantity, "NFTBank: NFT has insufficient balance to satisfy the withdrawal");
         balances[address(0)][nftContractAddress][tokenId] -= quantity;
         (bool success, ) = msg.sender.call{value: quantity}("");
         require(success, "NFTBank: Withdraw failed");
+
+        emit EtherWithdrawn(msg.sender, nftContractAddress, tokenId, quantity);
     }
 
-    function pullERC20(address tokenAddress, uint256 quantity, address nftContractAddress, uint256 tokenId) public nonReentrant {
+    /**
+     * @notice Pull ERC20s from an NFT to the owner's wallet
+     * @param tokenAddress address of the ERC20 being pulled
+     * @param quantity amount of ERC20 to be pulled
+     * @param nftContractAddress contract address of the NFT
+     * @param tokenId id of the NFT
+     */
+    function pullERC20(address tokenAddress, uint256 quantity, address nftContractAddress, uint256 tokenId) external nonReentrant {
         checkOwnership(nftContractAddress, tokenId);
         require(balances[tokenAddress][nftContractAddress][tokenId] >= quantity, "NFTBank: NFT has insufficient balance to satisfy the withdrawal");
         balances[tokenAddress][nftContractAddress][tokenId] -= quantity;
         IERC20(tokenAddress).safeTransfer(msg.sender, quantity);
+
+        emit ERC20Withdrawn(msg.sender, nftContractAddress, tokenId, tokenAddress, quantity);
     }    
 
     /**
@@ -93,5 +171,6 @@ contract NFTBank is ReentrancyGuard {
             return IERC721(nftAddress).ownerOf(tokenId);
         }
     }    
+
 
 }
