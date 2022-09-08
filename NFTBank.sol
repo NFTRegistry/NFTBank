@@ -62,7 +62,7 @@ contract NFTBank is ReentrancyGuard {
      * @param nftContractAddress contract address of the NFT
      * @param tokenId id of the NFT
      */
-    function depositEtherProtected(address nftContractAddress, uint256 tokenId) external payable nonReentrant {
+    function depositEtherProtected(address nftContractAddress, uint256 tokenId) external payable {
         checkOwnership(nftContractAddress, tokenId);
         depositEther(nftContractAddress, tokenId);
     }
@@ -74,7 +74,7 @@ contract NFTBank is ReentrancyGuard {
      * @param nftContractAddress contract address of the NFT
      * @param tokenId id of the NFT
      */
-    function depositERC20Protected(address tokenAddress, uint256 quantity, address nftContractAddress, uint256 tokenId) external nonReentrant {
+    function depositERC20Protected(address tokenAddress, uint256 quantity, address nftContractAddress, uint256 tokenId) external {
         checkOwnership(nftContractAddress, tokenId);        
         depositERC20(tokenAddress, quantity, nftContractAddress, tokenId);
     }    
